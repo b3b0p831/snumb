@@ -34,9 +34,9 @@ def read_file_contents(conn, share, path):
 def parse_file_contents(file_contents):
     pass
 
-def is_readable(smb_con : SMBConnection, shareName : str):
+def is_readable(smb_con : SMBConnection, shareName : str, path : str = "\*"):
     try:
-        smb_con.listPath(shareName, "/")
+        smb_con.listPath(shareName, path)
         return True
     except SessionError as e:
         return False
@@ -60,10 +60,10 @@ def printShareNames(smb_con : SMBConnection):
         shareName = x['shi1_netname'][:-1]
         remarks = x['shi1_remark'][:-1]
        
-        if is_readable(smb_con, shareName):
+        if is_readable(smb_con, shareName, "/"):
             perms += "R"
 
-        if is_writable(smb_con, shareName):
+        if is_writable(smb_con, shareName, "/"):
             perms += "W"
 
         
