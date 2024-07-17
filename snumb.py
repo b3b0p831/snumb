@@ -63,7 +63,7 @@ def printShareNames(smb_con : SMBConnection):
         if is_readable(smb_con, shareName, "/"):
             perms += "R"
 
-        if is_writable(smb_con, shareName, "/"):
+        if is_writable(smb_con, shareName):
             perms += "W"
 
         
