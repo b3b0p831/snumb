@@ -19,7 +19,9 @@ def list_files_in_directory(conn : SMBConnection, share_name, path, fs):
                     fs.append(new_path)
                     contents = read_file_contents(conn, share_name, new_path)
                     # Do some things with file contents
-                    
+
+    except SessionError as se:
+        pass
 
     except Exception as e:
         print(f"Error accessing {path}: {e}")
@@ -60,7 +62,7 @@ def printShareNames(smb_con : SMBConnection):
         shareName = x['shi1_netname'][:-1]
         remarks = x['shi1_remark'][:-1]
        
-        if is_readable(smb_con, shareName, "/"):
+        if is_readable(smb_con, shareName, "/*"):
             perms += "R"
 
         if is_writable(smb_con, shareName):
