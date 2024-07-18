@@ -1,1 +1,4 @@
 impacket
+tabulate
+colorama
+filemagic
