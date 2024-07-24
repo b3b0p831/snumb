@@ -2,4 +2,4 @@ impacket
 tabulate
 colorama
 python-magic
-asyncio
+chardet

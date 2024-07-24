@@ -8,14 +8,14 @@ Here are some things that snumb looks outfor:
 Here are the file types thats snumb supports:
 
 - Microsoft Office Docs (docx, xlsx, ppt)
-- PDF
-- Text based files (.txt, .html, .py, etc)
+- PDF, XML
+- ASCII/Unicode Text 
 
 ## 1.) Connect to share, log into smb share, list shares and perms 
 - [x] Connect
 - [x] Login
 - [x] List Shares
-- [x] List Share perms
+- [x] List Share Perms
 
 ## 2.) Recurse through fs and get files names. Open file based on type (txt, pdfs, cvs, etc)
 - [x] Recurse through fs, filenames
