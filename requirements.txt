@@ -3,3 +3,6 @@ tabulate
 colorama
 python-magic
 chardet
+pandas
+openpyxl
+pdfminer.six

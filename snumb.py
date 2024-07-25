@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
-import argparse, io, tabulate, magic, os, time, sys, re, chardet
+import pdfminer.high_level
+import argparse, io, tabulate, magic, os, time, sys, re, chardet, zipfile, openpyxl, pandas, pdfminer
 from impacket.smbconnection import SMBConnection, SessionError
 from impacket.smb import SharedFile, FILE_READ_DATA, FILE_WRITE_DATA, FILE_NON_DIRECTORY_FILE, GENERIC_ALL
 from colorama import Fore, Back, Style
@@ -15,16 +16,18 @@ concerned_file_types = [
 
 regex_patterns = [
     r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",  # email addresses
-    r"\$.{8,}$", # hash $y$39dkt...
+    r"^.*\$.*$", # hash $y$39dkt...
     r".{8,}$", # hash
-    r".{8,}$", # password
+    r"^.[A-Za-z0-9@#$%^&+=.]{8,}",
+    r".*assword.*",
+    r"\S*assword\S*",
 
 ]
 
 CLEAR_LINE = "\r\033[K"
 MAX_FILE_SIZE = 50
 DEFAULT_TIMEOUT = 10
-DEBUG = False
+VERBOSE = True
 
 def info_msgf(msg : str, prefix : str = "[+] ") -> str:
     return Fore.YELLOW + prefix + Fore.WHITE + f"{msg}" + Fore.RESET
@@ -37,16 +40,19 @@ def fail_msgf(msg : str, prefix : str = "[+] ") -> str:
     
 
 
-def list_share_files(conn : SMBConnection, share_name : str, max_file_size : int):
+def enumerate_share_files(conn : SMBConnection, share_name : str, max_file_size : int):
     file_types = []
-    print()
+
     tid = conn.connectTree(share_name)
-    get_path_contents(conn, share_name, "", file_types, max_file_size, tid)
-    conn.disconnectTree(tid)
     print()
+    parse_dir_contents(conn, share_name, "", file_types, max_file_size, tid)
+    print()
+    
+    conn.disconnectTree(tid)
+
     return file_types
 
-def get_path_contents(conn : SMBConnection, share_name : str, path : str, files: list, max_file_size : int, tid : int):
+def parse_dir_contents(conn : SMBConnection, share_name : str, path : str, files: list, max_file_size : int, tid : int):
         # List contents of the current directory
     dir_contents = conn.listPath(share_name, f"{path}\\*")
 
@@ -60,24 +66,22 @@ def get_path_contents(conn : SMBConnection, share_name : str, path : str, files:
                 # If it's a directory, recurse into it
                 if item.is_directory():
                     # Pretty print
-                    get_path_contents(conn, share_name, curr_path, files, max_file_size, tid)
+                    parse_dir_contents(conn, share_name, curr_path, files, max_file_size, tid)
                 else:
                     file_info = parse_file_contents(conn, share_name, path, max_file_size, item, tid)
                     print(f"{file_info[0]}: {file_info[1]}")
 
-                    if(len(file_info) > 2):
-                        print(fail_msgf(file_info[2], ""))
+                    if(len(file_info) > 2 and file_info[2]):
+                        print(info_msgf("Possible Secrets Found"))
+                        print(fail_msgf(file_info[2], ""))                    
+                    print()
+
+
 
                     files.append(file_info)
-
-        except SessionError as e:
-            if DEBUG:
-                if "STATUS_ACCESS_DENIED" not in e.getErrorString():
-                    print(f"\n{path}: {e}")
-
         except Exception as e:
-            if DEBUG:
-                print(f"\n{path}: {e}")
+            if VERBOSE:
+                print(e)
 
 
 def parse_file_contents(conn : SMBConnection, share_name : str, path : str, max_file_size : int, item : SharedFile, tid : int):
@@ -89,33 +93,107 @@ def parse_file_contents(conn : SMBConnection, share_name : str, path : str, max_
     cur_file_size_mb = item.get_filesize() / 1_000_000 #Convert bytes to megabytes
     
 
-    bytes_read =  read_file_contents(conn, file_path, tid, 1024)
-    mime = magic.from_buffer(bytes_read).split(",")[0]
+    bytes_read =  read_file_contents(conn, file_path, tid, 2048)
+    mime = f'{(magic.from_buffer(bytes_read).split(",")[0])}, {cur_file_size_mb}MB'
     full_path if len(full_path) <= os.get_terminal_size().columns-5 else full_path[:os.get_terminal_size().columns - 8]+"..."
-    if "ASCII" in mime or "XML" in mime:
-        if cur_file_size_mb <= max_file_size:
-            bytes_read = read_file_contents(conn, file_path, tid, item.get_filesize() )
-            # Perform secrets extraction                         
-            secrets = detect_secrets_with_regex(bytes_read.decode("utf-8"))
-            return [full_path, mime, secrets]
+    if cur_file_size_mb <= max_file_size:
+        secrets = []
+        contents = read_file_contents(conn, file_path, tid, item.get_filesize())
+        file_obj = io.BytesIO(contents)
+
+        # Perform secrets extraction                         
+        if "ASCII" in mime or "XML" in mime:
+            enc_type = chardet.detect(contents)["encoding"]
+            if enc_type:
+                secrets = detect_secrets_with_regex(contents.decode(encoding=enc_type))
+            else:
+                secrets = detect_secrets_with_regex(contents.decode("utf-8"))
+            
+
+        elif "Zip" in mime:
+            zip = zipfile.ZipFile(file_obj, "r")
+            buf = ""
+            for x in zip.filelist:
+                buf += str(x.filename) +"\n"
+            secrets = fail_msgf(buf, "")
+            zip.close()
+
+
+        elif "PDF" in mime:             
+            text = pdfminer.high_level.extract_text(file_obj)
+            secrets = detect_secrets_with_regex(text)
+
+        
+        # elif "Excel" in mime:
+        #     # secrets = pandas.read_excel(file_obj)
+        #     # secrets.map(str)
+        #     # secrets.map(lambda x: x.strip() if isinstance(x, str) else x)
+        #     wb = openpyxl.load_workbook(file_obj)
+        #     ws = wb.active
+        #     for mc in list(ws.merged_cells):
+        #         ws.unmerge_cells(str(mc))
+        #     wb.save(os.path.join(os.getcwd(), "tmp.xlsx"))
+        #     secrets = pandas.read_excel(os.path.join(os.getcwd(), "tmp.xlsx"))
+            
+
+        #     # for row in ws.iter_rows(values_only=True):
+        #     #     for cell in row:
+        #     #         file_str += f"{cell} "
+        #     #     file_str += "\n"
+
+        #file_obj.close()
+        #secrets = detect_secrets_with_regex(contents)
+
+        return [full_path, mime, secrets]
     
     
     return [full_path, mime]
     
 
-def detect_secrets_with_regex(text):
+def detect_secrets_with_regex(text : str):
     secrets = []
     for pattern in regex_patterns:
         matches = re.findall(pattern, text)
         secrets.extend(matches)
     return secrets
 
-def read_file_contents(conn : SMBConnection, path : str, tid : int, btr : int = 512):
+def read_file_contents(conn : SMBConnection, path : str, tid : int, btr : int = 512, offset : int = 0):
 
-    fid = conn.openFile(tid, path, FILE_READ_DATA)
-    contents = conn.readFile(tid, fid, 0, btr) # btr = bytesToRead
-    conn.closeFile(tid, fid)
-    return contents
+    fid = None
+    contents = b''
+
+    try:
+        fid = conn.openFile(treeId=tid, pathName=path, desiredAccess=FILE_READ_DATA)
+        file_info = conn.queryInfo(tid, fid)
+        total_file_size = file_info.fields['EndOfFile']
+        if(total_file_size <= 0):
+            return contents
+        
+        
+        contents = conn.readFile(treeId=tid, fileId=fid, offset=offset, bytesToRead=btr) # btr = bytesToRead
+        while(len(contents) < btr and len(contents) < total_file_size):
+            contents += conn.readFile(treeId=tid, fileId=fid, offset=len(contents))
+
+
+        #print(f"Size: {total_file_size}, Requested: {btr}, Read: {len(contents)}")
+        return contents
+    except SessionError as e:
+        if "STATUS_NO_SUCH_FILE" in e.getErrorString():
+            print(fail_msgf(f"{path} not found"))
+        elif "STATUS_ACCESS_DENIED" in e.getErrorString():
+            print(fail_msgf(f"{path} access denied"))
+
+
+    except Exception as e:
+        if VERBOSE:
+            print(e)
+
+    finally:
+        if fid:
+            conn.closeFile(tid, fid)
+        
+        return contents
+        
 
 def is_readable(smb_con : SMBConnection, shareName : str, path : str = "\*"):
     try:
@@ -123,12 +201,14 @@ def is_readable(smb_con : SMBConnection, shareName : str, path : str = "\*"):
         return True
     
     except SessionError as e:
-        if DEBUG:
-            if "STATUS_ACCESS_DENIED" not in e.getErrorString() or "STATUS_OBJECT_NAME_NOT_FOUND" not in e.getErrorString():
-                    print(e)
-    
+        if "STATUS_ACCESS_DENIED" in e.getErrorString():
+            print(fail_msgf(f'"{shareName}" read access denied'))
+
+        elif "STATUS_OBJECT_NAME_NOT_FOUND" not in e.getErrorString():
+            print(f"object not found")
+
     except Exception as e:
-        if DEBUG:
+        if VERBOSE:
             print(e)
         return False
 
@@ -151,13 +231,16 @@ def is_writable(smb_con : SMBConnection, shareName : str):
 
         smb_con.deleteFile(shareName, test_filename)
         return True
+ 
     except SessionError as e:
-        if DEBUG:
-            if "STATUS_ACCESS_DENIED" not in e.getErrorString() or "STATUS_OBJECT_NAME_NOT_FOUND" not in e.getErrorString():
-                    print(e)
-    
+        if "STATUS_ACCESS_DENIED" in e.getErrorString():
+            print(fail_msgf(f'"{shareName}" write access denied'))
+
+        elif "STATUS_OBJECT_NAME_NOT_FOUND" not in e.getErrorString():
+            print(f"object not found")
+
     except Exception as e:
-        if DEBUG:
+        if VERBOSE:
             print(e)
         return False
 
@@ -182,6 +265,36 @@ def get_share_names(smb_con : SMBConnection):
 
 
     return tabulate.tabulate(shares, share_headers, colalign=['left', 'center', 'center'])
+    
+def download_remote_file(conn : SMBConnection, shareName : str, path : str, dest : str = os.getcwd()):
+    try:
+        tid = conn.connectTree(shareName)
+        fid = conn.openFile(tid, path, FILE_READ_DATA)
+        info = conn.queryInfo(tid, fid)
+        conn.closeFile(tid, fid)
+
+        file_size = int(info.fields['AllocationSize'])
+        file_contents = read_file_contents(conn, path, tid, file_size)
+
+        print(info_msgf(f"Downloading {path} to {dest}"))
+        file_name = path.split("\\")[-1]
+        with open(os.path.join(os.getcwd(), file_name), "wb") as fd:
+            fd.write(file_contents)
+        return True
+
+    except SessionError as e:
+        if "STATUS_ACCESS_DENIED" in e.getErrorString():
+            print(fail_msgf(f'"{path} access denied'))
+
+        elif "STATUS_OBJECT_NAME_NOT_FOUND" not in e.getErrorString():
+            print(fail_msgf(f"{path} not found"))
+
+    except Exception as e:
+        if VERBOSE:
+            print(e)
+        return False
+        
+
 
 def main():
 
@@ -262,36 +375,20 @@ def main():
             exit()
 
         if args.download:
-            try:
-                print(info_msgf(f"Downloading {args.download} to {os.getcwd()}"))
-                file_name = args.download.split("\\")[-1]
-                tid = smb_con.connectTree(args.shareName)
-                fd = open(os.path.join(os.getcwd(), file_name), "wb")
-                fd.write(read_file_contents(smb_con, args.download, tid, 1000000))
+            if download_remote_file(smb_con, args.shareName, args.download):
+                print(success_msgf(f"Done!")) 
+            else:
+                print(fail_msgf(f"Failed to download {args.download} to {args.download}"))
 
-
-                print(success_msgf(f"Done!"))
-                sys.exit()
+            sys.exit()
                 
-            
-            except SessionError as e:
-                print(e)
-                if "STATUS_NO_SUCH_FILE" in e.getErrorString():
-                    print(fail_msgf(f"{args.download} not found on {args.shareName}"))
-
-            except Exception as e:
-                print(e)
-
-            finally:
-                sys.exit(-1)
-            
 
         #Server info and file size, turn into subroutine        
         print(info_msgf(f"Max filesize: {args.fileSize}MB"))
         print(info_msgf(f"Enumerating \\\\{args.target}\{args.shareName} for pdfs, Microsoft Office files, text files, scripts and any other juicy info..."))
 
         t_start = time.time()
-        file_info = list_share_files(conn=smb_con, share_name=args.shareName, max_file_size=args.fileSize)
+        file_info = enumerate_share_files(conn=smb_con, share_name=args.shareName, max_file_size=args.fileSize)
         t_stop = time.time()
         print(success_msgf(f"Elapsed Time: {t_stop - t_start:.2f}s"))
 
@@ -299,6 +396,9 @@ def main():
             with open(args.outfile, "w") as outFile:
                 for inf in file_info:
                     outFile.write(f"{inf[0]}: {inf[1]}\n")
+                    if(len(file_info) > 2 and file_info[2]):
+                        outFile.write(info_msgf("Possible Secrets Found\n"))
+                        outFile.write(fail_msgf(file_info[2], "") + "\n\n")   
 
 
         smb_con.close()
