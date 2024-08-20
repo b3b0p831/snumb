@@ -12,7 +12,7 @@ snumb aids red teamers and system admins in enumerating smb shares.
 
 # Usage
 ```sh
-user@compooter ~> git clone https://github.com/bebop831/snumb.git
+user@compooter ~> git clone https://github.com/b3b0p831/snumb.git
 user@compooter ~> cd snumb/
 user@compooter ~/snumb> python3 -m venv venv # Create virtual env
 user@compooter ~/snumb> . ./venv/bin/activate(.fish) #use .fish if needed else leave out
