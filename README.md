@@ -1,29 +1,67 @@
 # snumb
+
+
+![image](/imgs/snumb.png)
+
+(Please use responsibly and with permission only. I'm not responsible for your actions.)
+
 Tool for finding juicy secrets in SMB Shares
 
-snumb is a cli-based tool built using python3 and impacket.
+snumb aids red teamers and system admins in enumerating smb shares.
 
-Here are some things that snumb looks outfor:
 
-Here are the file types thats snumb supports:
+# Usage
+```sh
+user@compooter ~> git clone https://github.com/bebop831/snumb.git
+user@compooter ~> cd snumb/
+user@compooter ~/snumb> python3 -m venv venv # Create virtual env
+user@compooter ~/snumb> . ./venv/bin/activate(.fish) #use .fish if needed else leave out
+(venv) user@compooter ~/snumb> pip3 install -r requirements
+...
+user@compooter ~/snumb> python3 snumb.py -h
+```
+![image](/imgs/help.png)
 
-- Microsoft Office Docs (docx, xlsx, ppt)
+
+Given an smb server, snumb will list shares and available permissions.
+
+```sh
+(venv) user@compooter ~/snumb> python3 snumb.py 127.0.0.1:5050
+```
+
+![image](/imgs/ex0.png)
+
+
+Providing a share name with -s will recursivly list files, MIME type, and possible secrets.
+
+```
+(venv) user@compooter ~/snumb> python3 snumb.py 127.0.0.1:5050 -s "SHARE"
+```
+
+![image](/imgs/ex1.png)
+
+
+
+Here are the file types thats snumb currently supports:
+
 - PDF, XML
 - ASCII/Unicode Text 
+- ZIP (File listing only)
 
-## 1.) Connect to share, log into smb share, list shares and perms 
-- [x] Connect
-- [x] Login
-- [x] List Shares
-- [x] List Share Perms
+Comming Soon: Microsoft Office Docs (docx, xlsx, ppt), PCAP
 
-## 2.) Recurse through fs and get files names. Open file based on type (txt, pdfs, cvs, etc)
-- [x] Recurse through fs, filenames
-- [x] Get file type
 
-## 3.) Parse file contents, attempt to detect credentials. Both regex and ML approach?
-- [ ] Parse file contents aka regex credentials and secrets detection
-- [ ] Perform context analysis using AI?
 
-## 4.) Display results, format text
+Here are the things that snumb performs on each file that is within the max file size. By default every file that is 50MB and below will be analyzed for secrets (can be specified with -f filesize option)
 
+- Regex Matching
+- Keyword detection
+- MIME type analysis 
+
+Coming Soon: ML Based detection (coming soon)
+
+
+
+
+
+Ascii Art - https://patorjk.com/software/taag/#p=testall&h=0&v=0&f=Slant&t=SNUMB
