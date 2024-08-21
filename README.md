@@ -5,7 +5,7 @@
 
 (Please use responsibly and with permission only. I'm not responsible for your actions.)
 
-Tool for finding juicy secrets in SMB Shares
+Tool for finding juicy secrets in SMB Shares.
 
 snumb aids red teamers and system admins in enumerating smb shares.
 
@@ -16,7 +16,7 @@ user@compooter ~> git clone https://github.com/b3b0p831/snumb.git
 user@compooter ~> cd snumb/
 user@compooter ~/snumb> python3 -m venv venv # Create virtual env
 user@compooter ~/snumb> . ./venv/bin/activate(.fish) #use .fish if needed else leave out
-(venv) user@compooter ~/snumb> pip3 install -r requirements
+(venv) user@compooter ~/snumb> pip3 install -r requirements.txt
 ...
 user@compooter ~/snumb> python3 snumb.py -h
 ```
