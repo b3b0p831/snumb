@@ -58,7 +58,7 @@ Here are the things that snumb performs on each file that is within the max file
 - Keyword detection
 - MIME type analysis 
 
-Coming Soon: ML Based detection (coming soon)
+Coming Soon: ML Based detection using pandas/scikit-learn
 
 
 
