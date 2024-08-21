@@ -18,7 +18,7 @@ user@compooter ~/snumb> python3 -m venv venv # Create virtual env
 user@compooter ~/snumb> . ./venv/bin/activate(.fish) #use .fish if needed else leave out
 (venv) user@compooter ~/snumb> pip3 install -r requirements.txt
 ...
-user@compooter ~/snumb> python3 snumb.py -h
+(venv) user@compooter ~/snumb> python3 snumb.py -h
 ```
 ![image](/imgs/help.png)
 
