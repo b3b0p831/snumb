@@ -1,7 +1,7 @@
 # snumb
 
 
-![image](/imgs/snumb.png)
+![image](/imgs/snumb)
 
 (Please use responsibly and with permission only. I'm not responsible for your actions.)
 
